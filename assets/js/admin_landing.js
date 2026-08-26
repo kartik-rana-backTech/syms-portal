@@ -311,7 +311,7 @@
       const currentYear = new Date().getFullYear();
       let years = (availableYears && availableYears.length)
         ? availableYears.map(y => parseInt(y))
-        : [currentYear];
+        : [];
 
       if (events && events.length) {
         events.forEach(e => {
@@ -319,6 +319,8 @@
           if (!isNaN(y) && !years.includes(y)) years.push(y);
         });
       }
+
+      if (!years.length) years = [currentYear];
 
       years = [...new Set(years)].sort((a, b) => b - a);
 

@@ -298,14 +298,16 @@
 
     grid.innerHTML = list.map((kk, idx) => {
       const initials = (kk.full_name || '?')
-        .split(' ')
+        .trim()
+        .split(/\s+/)
         .map(w => w[0])
         .slice(0, 2)
         .join('')
         .toUpperCase();
 
       const avatarHtml = kk.photo_path
-        ? `<img src="${escHtml(kk.photo_path)}" alt="${escHtml(kk.full_name)}" class="kk-avatar-img" loading="lazy">`
+        ? `<img src="${escHtml(kk.photo_path)}" alt="${escHtml(kk.full_name)}" class="kk-avatar-img" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+           <div class="kk-avatar-initials" style="display:none;">${initials}</div>`
         : `<div class="kk-avatar-initials">${initials}</div>`;
 
       // WhatsApp direct link

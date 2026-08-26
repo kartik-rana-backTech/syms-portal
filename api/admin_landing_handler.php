@@ -112,27 +112,11 @@ try {
                 $foundingYear = (int)($foundingStmt->fetchColumn() ?: 2024);
                 if ($foundingYear < 1950 || $foundingYear > (int)date('Y')) $foundingYear = 2024;
 
-                // Get all distinct years from all CMS tables
-                $distinctYearsStmt = $pdo->query("
-                    SELECT DISTINCT year FROM (
-                        SELECT year FROM utsav_events
-                        UNION
-                        SELECT utsav_year as year FROM karyakartas
-                        UNION
-                        SELECT utsav_year as year FROM event_routes
-                        UNION
-                        SELECT utsav_year as year FROM event_memories
-                    ) as all_y
-                    ORDER BY year DESC
-                ");
-                $dbYears = $distinctYearsStmt->fetchAll(PDO::FETCH_COLUMN);
-
-                $currentYear = (int)date('Y');
-                $standardYears = [];
-                for ($y = $currentYear + 1; $y >= $foundingYear; $y--) {
-                    $standardYears[] = (string)$y;
+                // Dynamic Available Years directly matching configured utsav_events
+                $allYears = array_values(array_unique(array_map(fn($e) => (int)$e['year'], $rows)));
+                if (empty($allYears)) {
+                    $allYears = [(int)date('Y')];
                 }
-                $allYears = array_values(array_unique(array_merge($standardYears, array_map('strval', $dbYears))));
                 rsort($allYears);
 
                 landingAdminJson('success', 'Events retrieved', [

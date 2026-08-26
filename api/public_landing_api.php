@@ -60,16 +60,11 @@ try {
             $activeEvent = $activeStmt->fetch() ?: null;
             $activeYear = $activeEvent ? (int)$activeEvent['year'] : (int)date('Y');
 
-            // 3. Available Gallery Years (distinct years that contain memories)
-            $yearsStmt = $pdo->query("
-                SELECT DISTINCT utsav_year as year 
-                FROM event_memories 
-                WHERE is_visible = 1 
-                ORDER BY utsav_year DESC
-            ");
+            // 3. Available Festival Years (Synchronized with Admin utsav_events)
+            $yearsStmt = $pdo->query("SELECT DISTINCT year FROM utsav_events ORDER BY year DESC");
             $galleryYears = $yearsStmt->fetchAll(PDO::FETCH_COLUMN);
-            if (!in_array((string)$activeYear, $galleryYears, true)) {
-                array_unshift($galleryYears, (string)$activeYear);
+            if (empty($galleryYears)) {
+                $galleryYears = [(string)$activeYear];
             }
 
             // 4. Karyakartas (Global Mandal Committee - Independent Entity)
