@@ -1,0 +1,5 @@
+# Block PHP Execution
+<FilesMatch "\.(php|php5|php7|php8|phtml|phar)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

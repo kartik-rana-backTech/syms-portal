@@ -1,0 +1,25 @@
+# Sudarshan Yuvak Mandal - Root Web Security & URL Protection Rules
+
+# 1. Disable Directory Index Browsing
+Options -Indexes
+
+# 2. Block Direct Web Access to Secret Configuration & Schema Files
+<FilesMatch "^(otp_config\.php|db\.php|schema\.sql|\.env|\.htaccess|.*\.log)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 3. Block Direct Web Access to Internal Directories
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(scratch|database)/ - [F,L]
+</IfModule>
+
+# 4. Enterprise Security HTTP Headers
+<IfModule mod_headers.c>
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set X-XSS-Protection "1; mode=block"
+    Header unset X-Powered-By
+</IfModule>

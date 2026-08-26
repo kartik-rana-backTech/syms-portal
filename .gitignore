@@ -1,0 +1,41 @@
+# Environment & Credentials
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/*.log
+*.log
+
+# Temporary Scratch Files & OS Metadata
+scratch/
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Uploads (Keep directories with .gitkeep / .htaccess but do not track uploaded user files)
+/uploads/proofs/*
+!/uploads/proofs/.htaccess
+!/uploads/proofs/.gitkeep
+/uploads/landing/logo/*
+!/uploads/landing/logo/.htaccess
+!/uploads/landing/logo/.gitkeep
+/uploads/landing/murtikar/*
+!/uploads/landing/murtikar/.htaccess
+!/uploads/landing/murtikar/.gitkeep
+/uploads/landing/karyakartas/*
+!/uploads/landing/karyakartas/.htaccess
+!/uploads/landing/karyakartas/.gitkeep
+/uploads/landing/memories/*
+!/uploads/landing/memories/.htaccess
+!/uploads/landing/memories/.gitkeep
+/uploads/landing/routes/*
+!/uploads/landing/routes/.htaccess
+!/uploads/landing/routes/.gitkeep

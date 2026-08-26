@@ -1,0 +1,3 @@
+# Deny Direct Web Access to Config Folder
+Order allow,deny
+Deny from all
