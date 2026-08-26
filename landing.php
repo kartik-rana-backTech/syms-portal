@@ -24,9 +24,6 @@ require_once __DIR__ . '/includes/logger.php';
   <meta property="og:description" content="Official Ganesh Utsav Portal of Sudarshan Yuvak Mandal, Bhathena, Surat. Real-time countdown, procession routes, team contacts, and festival memories.">
   <meta property="og:type" content="website">
   
-  <!-- Permissions Policy for Embedded Maps & Sensor Features -->
-  <meta http-equiv="Permissions-Policy" content="accelerometer=*, gyroscope=*, magnetometer=*, geolocation=*">
-  
   <title>Sudarshan Yuvak Mandal | Official Ganesh Utsav Portal, Surat</title>
 
   <!-- Google Fonts Preconnect & Stylesheets -->

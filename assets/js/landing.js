@@ -430,7 +430,7 @@
       let mapHtml = '';
       if (r.map_embed_url) {
         if (isEmbeddableMap(r.map_embed_url)) {
-          mapHtml = `<iframe class="route-map-frame" src="${escHtml(r.map_embed_url)}" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${escHtml(r.title)} Route Map"></iframe>`;
+          mapHtml = `<iframe class="route-map-frame" src="${escHtml(r.map_embed_url)}" allow="accelerometer; gyroscope; magnetometer; geolocation" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${escHtml(r.title)} Route Map"></iframe>`;
         } else {
           // Render as external link to avoid X-Frame-Options blocking
           mapHtml = `
