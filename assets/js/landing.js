@@ -430,7 +430,7 @@
       let mapHtml = '';
       if (r.map_embed_url) {
         if (isEmbeddableMap(r.map_embed_url)) {
-          mapHtml = `<iframe class="route-map-frame" src="${escHtml(r.map_embed_url)}" allow="accelerometer; gyroscope; magnetometer; geolocation; fullscreen; ambient-light-sensor;" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${escHtml(r.title)} Route Map"></iframe>`;
+          mapHtml = `<iframe class="route-map-frame" src="${escHtml(r.map_embed_url)}" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${escHtml(r.title)} Route Map"></iframe>`;
         } else {
           // Render as external link to avoid X-Frame-Options blocking
           mapHtml = `
@@ -660,7 +660,7 @@
         const localSrc = item.dataset.local;
         if (embedUrl) {
           videoEl.innerHTML = `
-            <iframe src="${escHtml(embedUrl)}?autoplay=1" style="width:min(90vw,900px);height:min(75vh,520px);border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.8);" allow="autoplay; fullscreen" allowfullscreen title="${escHtml(title)}"></iframe>`;
+            <iframe src="${escHtml(embedUrl)}?autoplay=1" style="width:min(90vw,900px);height:min(75vh,520px);border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.8);" allow="autoplay; fullscreen" title="${escHtml(title)}"></iframe>`;
         } else if (localSrc) {
           videoEl.innerHTML = `
             <video src="${escHtml(localSrc)}" controls autoplay playsinline style="max-width:min(90vw,900px);max-height:min(75vh,520px);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.8);background:#000;outline:none;"></video>`;
