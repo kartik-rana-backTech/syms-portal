@@ -107,17 +107,24 @@ try {
             case 'get_events':
                 $rows = $pdo->query("SELECT * FROM utsav_events ORDER BY year DESC")->fetchAll();
 
-                // Get founding year from settings
+                // Get founding year from settings (defaults to 2024)
                 $foundingStmt = $pdo->query("SELECT setting_value FROM mandal_settings WHERE setting_key = 'founding_year'");
                 $foundingYear = (int)($foundingStmt->fetchColumn() ?: 2024);
-                if ($foundingYear < 1950 || $foundingYear > (int)date('Y')) $foundingYear = 2024;
+                if ($foundingYear < 1950 || $foundingYear > 2100) $foundingYear = 2024;
 
-                // Dynamic Available Years directly matching configured utsav_events
-                $allYears = array_values(array_unique(array_map(fn($e) => (int)$e['year'], $rows)));
-                if (empty($allYears)) {
-                    $allYears = [(int)date('Y')];
+                // Dynamic Available Years starting from founding_year up to current_year + 1 (or max configured)
+                $currentYear = (int)date('Y');
+                $maxYear = max($currentYear + 1, $foundingYear);
+                foreach ($rows as $r) {
+                    if ((int)$r['year'] > $maxYear) {
+                        $maxYear = (int)$r['year'];
+                    }
                 }
-                rsort($allYears);
+
+                $allYears = [];
+                for ($y = $maxYear; $y >= $foundingYear; $y--) {
+                    $allYears[] = (int)$y;
+                }
 
                 landingAdminJson('success', 'Events retrieved', [
                     'events'          => $rows,

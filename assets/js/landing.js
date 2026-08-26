@@ -16,7 +16,7 @@
   function applyLandingData(data) {
     if (!data || data.status !== 'success') return;
     renderHeroAndSettings(data.settings, data.active_event);
-    renderCountdown(data.active_event);
+    renderCountdown(data.active_event, data.countdown_info);
     renderAbout(data.settings, data);
     renderEventInfo(data.active_event);
     renderKaryakartas(data.karyakartas || []);
@@ -124,13 +124,24 @@
   }
 
   // -----------------------------------------------------------------------
-  // 2. LIVE COUNTDOWN TIMER
+  // 2. LIVE COUNTDOWN TIMER (Dynamic Multi-Year & Auto-Rollover Engine)
   // -----------------------------------------------------------------------
-  function renderCountdown(event) {
+  let countdownTimerId = null;
+
+  function renderCountdown(event, countdownInfo) {
     const box = document.getElementById('countdownBox');
     if (!box) return;
 
-    if (!event || !event.ganesh_arrival_date) {
+    if (countdownTimerId) {
+      clearInterval(countdownTimerId);
+      countdownTimerId = null;
+    }
+
+    const state = countdownInfo?.state || 'upcoming';
+    const targetDateStr = countdownInfo?.target_date || event?.ganesh_arrival_date;
+    const targetYear = countdownInfo?.target_year || event?.year || new Date().getFullYear();
+
+    if (!targetDateStr) {
       box.innerHTML = `
         <div style="text-align: center; padding: 14px 0; color: var(--text-muted);">
           <i class="fa-solid fa-clock-rotate-left" style="font-size: 22px; color: var(--primary); margin-bottom: 6px; display: block;"></i>
@@ -139,15 +150,22 @@
       return;
     }
 
-    const targetDate = new Date(event.ganesh_arrival_date + 'T00:00:00');
+    const targetDate = new Date(targetDateStr + 'T00:00:00');
     const nameEl = document.getElementById('countdownEventName');
+
     if (nameEl) {
-      nameEl.innerHTML = `<i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> <span>Ganesh Aagman: <strong>${formatDate(event.ganesh_arrival_date)}</strong></span>`;
+      if (state === 'live') {
+        nameEl.innerHTML = `<i class="fa-solid fa-om" style="color: var(--primary);"></i> <span>🙏 <strong>Ganesh Utsav ${targetYear} Is LIVE!</strong> Visarjan Countdown:</span>`;
+      } else if (state === 'rollover') {
+        nameEl.innerHTML = `<i class="fa-solid fa-sparkles" style="color: var(--primary);"></i> <span>🌸 Next Celebration — <strong>Ganesh Chaturthi ${targetYear} (${formatDate(targetDateStr)})</strong></span>`;
+      } else {
+        nameEl.innerHTML = `<i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> <span>Ganesh Aagman ${targetYear}: <strong>${formatDate(targetDateStr)}</strong></span>`;
+      }
     }
 
     function updateDigits() {
       const now = new Date();
-      const diff = targetDate - now;
+      let diff = targetDate - now;
 
       const dEl = document.getElementById('cdDays');
       const hEl = document.getElementById('cdHours');
@@ -161,8 +179,8 @@
         hEl.textContent = '00';
         mEl.textContent = '00';
         sEl.textContent = '00';
-        if (nameEl) {
-          nameEl.innerHTML = '🎉 <strong>Ganesh Chaturthi Celebrations Are Live! Jai Shree Ganesh!</strong>';
+        if (nameEl && state === 'upcoming') {
+          nameEl.innerHTML = `🎉 <strong>Ganesh Chaturthi ${targetYear} Celebrations Are Live! Jai Shree Ganesh!</strong>`;
         }
         return;
       }
@@ -179,7 +197,7 @@
     }
 
     updateDigits();
-    setInterval(updateDigits, 1000);
+    countdownTimerId = setInterval(updateDigits, 1000);
   }
 
   // -----------------------------------------------------------------------
