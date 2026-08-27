@@ -62,7 +62,7 @@ class Database {
             $port   = (int)Env::get('DB_PORT', 3306);
             $dbname = (string)Env::get('DB_NAME', 'sudarshan_yuvak_mandal');
             $user   = (string)Env::get('DB_USER', 'root');
-            $pass   = (string)Env::get('DB_PASS', '');
+            $pass   = (string)(Env::get('DB_PASSWORD') ?? Env::get('DB_PASS', ''));
 
             $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
             
