@@ -118,10 +118,29 @@ class SmtpMailer {
         }
 
         $prefix = ($encryption === 'ssl') ? 'ssl://' : '';
-        $socket = @fsockopen($prefix . $host, $port, $errno, $errstr, 10);
+        $socket = @fsockopen($prefix . $host, $port, $errno, $errstr, 8);
 
         if (!$socket) {
-            return ['success' => false, 'message' => "Could not connect to {$host}:{$port}. Error: {$errstr}"];
+            Logger::warning("SMTP socket connection failed to {$host}:{$port} ({$errstr}). Attempting native mail() fallback.");
+            
+            // Fallback to PHP native mail() if hosting provider restricts socket port 587/465
+            $headers = [
+                "MIME-Version: 1.0",
+                "Content-Type: text/html; charset=UTF-8",
+                "From: {$fromName} <{$fromEmail}>",
+                "Reply-To: {$fromEmail}",
+                "X-Mailer: PHP/" . phpversion()
+            ];
+
+            $mailSent = @mail($toEmail, $subject, $htmlBody, implode("\r\n", $headers));
+            if ($mailSent) {
+                return ['success' => true, 'message' => 'Email dispatched successfully.'];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Email delivery failed. Please contact the administrator or verify SMTP settings.'
+            ];
         }
 
         stream_set_timeout($socket, 10);
@@ -147,10 +166,12 @@ class SmtpMailer {
             $resp = $sendCommand("STARTTLS");
             if (strpos($resp, '220') === false) {
                 fclose($socket);
-                return ['success' => false, 'message' => "STARTTLS failed: {$resp}"];
+                Logger::error("STARTTLS handshake failed: {$resp}");
+                return ['success' => false, 'message' => "Secure TLS connection could not be established."];
             }
             if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT)) {
                 fclose($socket);
+                Logger::error("TLS encryption handshake negotiation failed.");
                 return ['success' => false, 'message' => "TLS encryption handshake failed."];
             }
             $resp = $sendCommand("EHLO " . gethostname());
@@ -159,37 +180,43 @@ class SmtpMailer {
         $resp = $sendCommand("AUTH LOGIN");
         if (strpos($resp, '334') === false) {
             fclose($socket);
-            return ['success' => false, 'message' => "AUTH LOGIN command rejected: {$resp}"];
+            Logger::error("AUTH LOGIN command rejected: {$resp}");
+            return ['success' => false, 'message' => "SMTP authentication method not supported."];
         }
 
         $resp = $sendCommand(base64_encode($username));
         if (strpos($resp, '334') === false) {
             fclose($socket);
-            return ['success' => false, 'message' => "SMTP Username rejected by {$host}: {$resp}"];
+            Logger::error("SMTP Username rejected: {$resp}");
+            return ['success' => false, 'message' => "SMTP authentication rejected username."];
         }
 
         $resp = $sendCommand(base64_encode($password));
         if (strpos($resp, '235') === false) {
             fclose($socket);
-            return ['success' => false, 'message' => "SMTP Authentication failed. Please check your Gmail App Password."];
+            Logger::error("SMTP Authentication rejected credentials. Verify App Password.");
+            return ['success' => false, 'message' => "SMTP Authentication failed. Please check your email app password."];
         }
 
         $resp = $sendCommand("MAIL FROM: <{$fromEmail}>");
         if (strpos($resp, '250') === false) {
             fclose($socket);
-            return ['success' => false, 'message' => "MAIL FROM failed: {$resp}"];
+            Logger::error("MAIL FROM rejected: {$resp}");
+            return ['success' => false, 'message' => "Sender address rejected by mail server."];
         }
 
         $resp = $sendCommand("RCPT TO: <{$toEmail}>");
         if (strpos($resp, '250') === false) {
             fclose($socket);
-            return ['success' => false, 'message' => "RCPT TO failed for {$toEmail}: {$resp}"];
+            Logger::error("RCPT TO rejected for {$toEmail}: {$resp}");
+            return ['success' => false, 'message' => "Recipient address could not be verified."];
         }
 
         $resp = $sendCommand("DATA");
         if (strpos($resp, '354') === false) {
             fclose($socket);
-            return ['success' => false, 'message' => "DATA command rejected: {$resp}"];
+            Logger::error("DATA command rejected: {$resp}");
+            return ['success' => false, 'message' => "Mail server rejected message data stream."];
         }
 
         $headers = [
@@ -210,7 +237,8 @@ class SmtpMailer {
         if (strpos($resp, '250') !== false) {
             return ['success' => true, 'message' => 'Email sent successfully via Gmail SMTP.'];
         } else {
-            return ['success' => false, 'message' => "Failed to deliver email: {$resp}"];
+            Logger::error("Final message delivery response: {$resp}");
+            return ['success' => false, 'message' => "Failed to deliver email message."];
         }
     }
 }

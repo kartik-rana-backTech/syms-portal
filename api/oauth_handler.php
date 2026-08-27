@@ -9,33 +9,53 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/db.php';
 
 $action = Security::sanitizeInput($_GET['action'] ?? $_POST['action'] ?? '');
-$appBaseUrl = rtrim(Env::get('APP_BASE_URL', 'http://localhost/PHP_project/manager'), '/');
 
-// Helper for HTTP requests (cURL fallback to file_get_contents)
+// Dynamic Base URL Resolver (prioritizes .env, auto-detects current host origin)
+$envBaseUrl = Env::get('APP_BASE_URL', '');
+if (!empty($envBaseUrl) && !str_contains((string)$envBaseUrl, 'localhost')) {
+    $appBaseUrl = rtrim((string)$envBaseUrl, '/');
+} else {
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
+             (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $scriptDir = dirname(dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+    $scriptDir = ($scriptDir === '/' || $scriptDir === '\\') ? '' : $scriptDir;
+    $appBaseUrl = rtrim("{$proto}://{$host}{$scriptDir}", '/');
+}
+
+// Helper for HTTP requests (cURL fallback with safe timeouts)
 function httpPostJson(string $url, array $postFields, array $headers = []): ?array {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postFields));
     curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge(['Content-Type: application/x-www-form-urlencoded'], $headers));
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     $response = curl_exec($ch);
+    if ($response === false) {
+        Logger::error("OAuth cURL POST error to {$url}: " . curl_error($ch));
+    }
     curl_close($ch);
 
     if (!$response) return null;
-    return json_decode($response, true);
+    return json_decode((string)$response, true);
 }
 
 function httpGetJson(string $url, array $headers = []): ?array {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge(['User-Agent: SudarshanYuvakMandal-OAuthApp'], $headers));
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     $response = curl_exec($ch);
+    if ($response === false) {
+        Logger::error("OAuth cURL GET error to {$url}: " . curl_error($ch));
+    }
     curl_close($ch);
 
     if (!$response) return null;
-    return json_decode($response, true);
+    return json_decode((string)$response, true);
 }
 
 // Helper to auto-login or register user in DB

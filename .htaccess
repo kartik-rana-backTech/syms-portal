@@ -3,16 +3,16 @@
 # 1. Disable Directory Index Browsing
 Options -Indexes
 
-# 2. Block Direct Web Access to Secret Configuration & Schema Files
-<FilesMatch "^(otp_config\.php|db\.php|schema\.sql|\.env|\.htaccess|.*\.log)$">
+# 2. Block Direct Web Access to Secret Configuration, Schemas & System Files
+<FilesMatch "(\.env|\.env\..*|\.sql|\.log|\.git.*|\.htaccess|SYSTEM_DESIGN\.md)$">
     Order allow,deny
     Deny from all
 </FilesMatch>
 
-# 3. Block Direct Web Access to Internal Directories
+# 3. Block Direct Web Access to Internal Sensitive Folders
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteRule ^(scratch|database)/ - [F,L]
+    RewriteRule ^(scratch|logs|config)/ - [F,L]
 </IfModule>
 
 # 4. Enterprise Security HTTP Headers

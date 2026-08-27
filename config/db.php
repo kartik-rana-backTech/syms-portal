@@ -11,15 +11,36 @@ require_once __DIR__ . '/../includes/logger.php';
 
 // Secure Session Initialization Parameters
 if (session_status() === PHP_SESSION_NONE) {
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
     ini_set('session.use_only_cookies', '1');
     ini_set('session.use_strict_mode', '1');
     ini_set('session.cookie_httponly', '1');
-    ini_set('session.cookie_samesite', 'Lax'); // Must be Lax (not Strict) to allow OAuth cross-site redirects
+    ini_set('session.cookie_samesite', 'Lax'); // Allows OAuth cross-site redirects
     ini_set('session.gc_maxlifetime', '28800'); // 8 Hours Session
+    
+    if ($isHttps) {
+        ini_set('session.cookie_secure', '1');
+    }
     
     session_name('SMD_SESSID');
     session_start();
 }
+
+// Production Error Handling & Suppression
+$appEnv = strtolower((string)Env::get('APP_ENV', 'production'));
+if ($appEnv === 'production') {
+    ini_set('display_errors', '0');
+    ini_set('display_startup_errors', '0');
+    error_reporting(0);
+} else {
+    ini_set('display_errors', '1');
+    ini_set('display_startup_errors', '1');
+    error_reporting(E_ALL);
+}
+ini_set('log_errors', '1');
 
 // Global Security Headers
 if (!headers_sent()) {
@@ -37,12 +58,13 @@ class Database {
 
     public static function getConnection(): PDO {
         if (self::$pdo === null) {
-            $host = Env::get('DB_HOST', 'localhost');
-            $dbname = Env::get('DB_NAME', 'sudarshan_yuvak_mandal');
-            $user = Env::get('DB_USER', 'root');
-            $pass = Env::get('DB_PASS', '');
+            $host   = (string)Env::get('DB_HOST', 'localhost');
+            $port   = (int)Env::get('DB_PORT', 3306);
+            $dbname = (string)Env::get('DB_NAME', 'sudarshan_yuvak_mandal');
+            $user   = (string)Env::get('DB_USER', 'root');
+            $pass   = (string)Env::get('DB_PASS', '');
 
-            $dsn = "mysql:host={$host};dbname={$dbname};charset=utf8mb4";
+            $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
             
             $options = [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -56,9 +78,10 @@ class Database {
             } catch (PDOException $e) {
                 Logger::error("Database Connection Failure: " . $e->getMessage());
                 http_response_code(500);
+                header('Content-Type: application/json; charset=utf-8');
                 die(json_encode([
-                    'status' => 'error',
-                    'message' => 'Database connection failed. Please check MySQL service.'
+                    'status'  => 'error',
+                    'message' => 'Service temporarily unavailable. Database connection could not be established.'
                 ]));
             }
         }
