@@ -6,6 +6,27 @@
 (function () {
   'use strict';
 
+  // Global passive event listener patch to eliminate non-passive scroll-blocking violation warnings
+  if (typeof EventTarget !== 'undefined') {
+    const passiveEvents = new Set(['touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel', 'mousewheel']);
+    const origAdd = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      let modOptions = options;
+      if (passiveEvents.has(type)) {
+        if (typeof options === 'boolean') {
+          modOptions = { capture: options, passive: true };
+        } else if (typeof options === 'object' && options !== null) {
+          if (options.passive === undefined) {
+            modOptions = Object.assign({}, options, { passive: true });
+          }
+        } else if (options === undefined || options === null) {
+          modOptions = { passive: true };
+        }
+      }
+      return origAdd.call(this, type, listener, modOptions);
+    };
+  }
+
   let allMemories    = [];
   let allRoutes      = [];
   let activeFilter   = 'all';
@@ -34,6 +55,8 @@
     setupBackToTop();
     setupRevealObserver();
     setupLightbox();
+    setupRouteMapModal();
+    setupGalleryViewToggle();
     initFestiveParticles();
 
     // 1. Instant Cache-First Paint (< 5ms)
@@ -411,6 +434,53 @@
     return lower.includes('embed') || lower.includes('output=embed');
   }
 
+  function getDirectGoogleMapsUrl(mapUrl, title) {
+    if (!mapUrl) {
+      return title
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(title + ', Bhathena, Surat, Gujarat')}`
+        : 'https://www.google.com/maps';
+    }
+
+    // 1. If already a standard direct link (e.g. maps.app.goo.gl, goo.gl/maps, google.com/maps/place/...)
+    if (!mapUrl.includes('/maps/embed') && !mapUrl.includes('output=embed')) {
+      return mapUrl;
+    }
+
+    // 2. If it contains output=embed parameter
+    if (mapUrl.includes('output=embed')) {
+      return mapUrl.replace(/[?&]output=embed/gi, '').replace(/\?&/, '?');
+    }
+
+    // 3. If it has a search query parameter (e.g. q= or query=)
+    try {
+      const parsed = new URL(mapUrl);
+      const q = parsed.searchParams.get('q') || parsed.searchParams.get('query') || parsed.searchParams.get('destination');
+      if (q) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+      }
+    } catch (e) {}
+
+    // 4. Extract latitude & longitude from Google Maps pb parameter (!3d / !2d)
+    const latMatch = mapUrl.match(/!3d([-\d.]+)/);
+    const lngMatch = mapUrl.match(/!2d([-\d.]+)/);
+    if (latMatch && lngMatch) {
+      return `https://www.google.com/maps/search/?api=1&query=${latMatch[1]},${lngMatch[1]}`;
+    }
+
+    // 5. Extract place query string from Google Maps pb parameter (!2s)
+    const placeMatch = mapUrl.match(/!2s([^!&]+)/);
+    if (placeMatch && placeMatch[1]) {
+      try {
+        const decoded = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(decoded)}`;
+      } catch (e) {}
+    }
+
+    // 6. Safe fallback with route title and Mandal address
+    const cleanTitle = (title ? title + ' ' : '') + 'Sudarshan Yuvak Mandal Sheri No.1 Bhathena Surat Gujarat';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanTitle)}`;
+  }
+
   function renderRouteCards() {
     const grid = document.getElementById('routesGrid');
     if (!grid) return;
@@ -428,13 +498,35 @@
 
     grid.innerHTML = filtered.map(r => {
       let mapHtml = '';
+      const directMapUrl = getDirectGoogleMapsUrl(r.map_embed_url, r.title);
+
       if (r.map_embed_url) {
         if (isEmbeddableMap(r.map_embed_url)) {
-          mapHtml = `<iframe class="route-map-frame" src="${escHtml(r.map_embed_url)}" allow="accelerometer; gyroscope; magnetometer; geolocation" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="${escHtml(r.title)} Route Map"></iframe>`;
+          mapHtml = `
+            <div class="route-map-container" data-embed-url="${escHtml(r.map_embed_url)}" data-direct-url="${escHtml(directMapUrl)}" data-title="${escHtml(r.title)}" data-route-type="${escHtml(r.route_type)}">
+              <div class="route-map-placeholder">
+                <div class="route-map-placeholder-icon">
+                  <i class="fa-solid fa-map-location-dot"></i>
+                </div>
+                <div class="route-map-placeholder-text">
+                  <strong>Interactive Route Map</strong>
+                  <span>Explore stops, turns, and checkpoints</span>
+                </div>
+                <div class="route-map-actions">
+                  <button type="button" class="btn-load-map" data-action="load-map">
+                    <i class="fa-solid fa-play"></i> View Live Map
+                  </button>
+                  <a href="${escHtml(directMapUrl)}" target="_blank" rel="noopener" class="btn-open-gmaps">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Google Maps
+                  </a>
+                </div>
+              </div>
+            </div>
+          `;
         } else {
           // Render as external link to avoid X-Frame-Options blocking
           mapHtml = `
-            <a href="${escHtml(r.map_embed_url)}" target="_blank" rel="noopener" class="btn-route-pdf" style="background:linear-gradient(135deg,#3B82F6,#1D4ED8);margin-bottom:10px;">
+            <a href="${escHtml(directMapUrl)}" target="_blank" rel="noopener" class="btn-route-pdf" style="background:linear-gradient(135deg,#3B82F6,#1D4ED8);margin-bottom:10px;">
               <i class="fa-solid fa-map-location-dot"></i> Open Route in Google Maps
             </a>
           `;
@@ -462,19 +554,111 @@
       `;
     }).join('');
 
+    // Attach click listener for loading map in dedicated interactive modal
+    grid.querySelectorAll('button[data-action="load-map"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const container = btn.closest('.route-map-container');
+        if (!container) return;
+        const embedUrl = container.dataset.embedUrl;
+        const directUrl = container.dataset.directUrl || getDirectGoogleMapsUrl(embedUrl);
+        const title = container.dataset.title || 'Route Map';
+        const routeType = container.dataset.routeType || 'aagman';
+        openRouteMapModal(embedUrl, directUrl, title, routeType);
+      });
+    });
+
     observeReveals();
   }
 
   // -----------------------------------------------------------------------
-  // 7. FESTIVAL MEMORIES & VIDEO GALLERY (On-Demand Year Fetching)
+  // 6.1 ROUTE MAP MODAL HANDLER
+  // -----------------------------------------------------------------------
+  function setupRouteMapModal() {
+    const modal = document.getElementById('routeMapModal');
+    const closeBtn = document.getElementById('routeMapModalClose');
+    if (!modal) return;
+
+    closeBtn?.addEventListener('click', closeRouteMapModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeRouteMapModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.classList.contains('active')) closeRouteMapModal();
+    });
+  }
+
+  function openRouteMapModal(embedUrl, directUrl, title, routeType) {
+    const modal = document.getElementById('routeMapModal');
+    const titleEl = document.getElementById('routeModalTitle');
+    const badgeEl = document.getElementById('routeModalBadge');
+    const bodyEl = document.getElementById('routeModalBody');
+    const linkEl = document.getElementById('routeModalGmapsLink');
+    if (!modal || !bodyEl) return;
+
+    if (titleEl) titleEl.textContent = title || 'Procession Route Map';
+    if (badgeEl) {
+      badgeEl.className = `route-pill-badge ${routeType || 'aagman'}`;
+      badgeEl.textContent = routeType === 'visarjan' ? '🌊 Visarjan' : '🚶 Aagman';
+    }
+    if (linkEl) linkEl.href = directUrl || getDirectGoogleMapsUrl(embedUrl, title);
+
+    bodyEl.innerHTML = `
+      <iframe class="route-map-frame" src="${escHtml(embedUrl)}" allow="accelerometer; gyroscope; magnetometer; geolocation" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:100%;border:none;touch-action:pan-y;" title="${escHtml(title)} Route Map"></iframe>
+    `;
+
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeRouteMapModal() {
+    const modal = document.getElementById('routeMapModal');
+    const bodyEl = document.getElementById('routeModalBody');
+    if (!modal) return;
+
+    modal.classList.remove('active');
+    if (bodyEl) bodyEl.innerHTML = '';
+    document.body.style.overflow = '';
+  }
+
+  // -----------------------------------------------------------------------
+  // 7. FESTIVAL MEMORIES & VIDEO GALLERY (Swipe Cards Carousel + Grid)
   // -----------------------------------------------------------------------
   const yearMemoriesCache = {};
+  let currentGalleryView = 'carousel';
+
+  function setupGalleryViewToggle() {
+    const btnCarousel = document.getElementById('btnViewCarousel');
+    const btnGrid = document.getElementById('btnViewGrid');
+    const carouselWrapper = document.getElementById('galleryCarouselContainer');
+    const carouselMeta = document.getElementById('galleryCarouselMeta');
+    const gridWrapper = document.getElementById('galleryGrid');
+
+    if (!btnCarousel || !btnGrid) return;
+
+    btnCarousel.addEventListener('click', () => {
+      currentGalleryView = 'carousel';
+      btnCarousel.classList.add('active');
+      btnGrid.classList.remove('active');
+      if (carouselWrapper) carouselWrapper.style.display = 'block';
+      if (carouselMeta) carouselMeta.style.display = 'flex';
+      if (gridWrapper) gridWrapper.style.display = 'none';
+    });
+
+    btnGrid.addEventListener('click', () => {
+      currentGalleryView = 'grid';
+      btnGrid.classList.add('active');
+      btnCarousel.classList.remove('active');
+      if (carouselWrapper) carouselWrapper.style.display = 'none';
+      if (carouselMeta) carouselMeta.style.display = 'none';
+      if (gridWrapper) gridWrapper.style.display = 'grid';
+    });
+  }
 
   function renderGallery(memories, years, activeYear) {
     const selectedYear = String(activeYear || (years && years[0]) || new Date().getFullYear());
     yearMemoriesCache[selectedYear] = memories || [];
     renderGalleryYearFilters(years, selectedYear);
-    renderGalleryGrid(selectedYear, memories);
+    renderGalleryContent(selectedYear, memories);
   }
 
   function renderGalleryYearFilters(years, activeYear) {
@@ -500,94 +684,130 @@
       btn.classList.add('active');
 
       if (yearMemoriesCache[val]) {
-        renderGalleryGrid(val, yearMemoriesCache[val]);
+        renderGalleryContent(val, yearMemoriesCache[val]);
         return;
       }
 
+      const track = document.getElementById('gallerySwipeTrack');
       const grid = document.getElementById('galleryGrid');
-      if (grid) {
-        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#FF5500;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;color:#64748B;">Loading memories...</p></div>';
-      }
+      const loadingHtml = '<div style="grid-column:1/-1;width:100%;text-align:center;padding:40px;color:#FF5500;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;color:#64748B;">Loading memories...</p></div>';
+      if (track) track.innerHTML = loadingHtml;
+      if (grid) grid.innerHTML = loadingHtml;
 
       try {
         const res = await fetch(`api/public_landing_api.php?action=memories_by_year&year=${val}`);
         const data = await res.json();
         const mems = data.memories || [];
         yearMemoriesCache[val] = mems;
-        renderGalleryGrid(val, mems);
+        renderGalleryContent(val, mems);
       } catch (e) {
-        renderGalleryGrid(val, []);
+        renderGalleryContent(val, []);
       }
     });
     return btn;
   }
 
-  function renderGalleryGrid(filter, specificMemories) {
+  function renderGalleryContent(filterYear, memories) {
+    const track = document.getElementById('gallerySwipeTrack');
     const grid = document.getElementById('galleryGrid');
-    if (!grid) return;
+    const metaBox = document.getElementById('galleryCarouselMeta');
+    const prevBtn = document.getElementById('btnCarouselPrev');
+    const nextBtn = document.getElementById('btnCarouselNext');
+    const counterBadge = document.getElementById('carouselCounterBadge');
 
-    const list = specificMemories || [];
+    const list = memories || [];
 
     if (!list.length) {
-      grid.innerHTML = `
-        <div class="empty-data-placeholder">
+      const emptyHtml = `
+        <div class="empty-data-placeholder" style="width:100%;">
           <i class="fa-solid fa-images"></i>
-          <p>No photos or videos uploaded for year ${escHtml(filter)} yet.</p>
+          <p>No photos or videos uploaded for year ${escHtml(filterYear)} yet.</p>
         </div>`;
+      if (track) track.innerHTML = emptyHtml;
+      if (grid) grid.innerHTML = emptyHtml;
+      if (metaBox) metaBox.style.display = 'none';
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
       return;
     }
 
-    grid.innerHTML = list.map(mem => {
-      const isVideo = mem.media_type === 'video';
-      const ytId = isVideo && mem.video_url ? getYouTubeId(mem.video_url) : null;
-      const embedUrl = isVideo ? getEmbedUrl(mem.video_url || '') : '';
-      const localVideo = isVideo && mem.file_path ? mem.file_path : null;
+    if (metaBox && currentGalleryView === 'carousel') metaBox.style.display = 'flex';
 
-      if (isVideo) {
-        let mediaPreviewHtml = '';
-        if (ytId) {
-          mediaPreviewHtml = `
-            <img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" alt="${escHtml(mem.title)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">
-            <div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>
-          `;
-        } else if (localVideo) {
-          mediaPreviewHtml = `
-            <video src="${escHtml(localVideo)}" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover;pointer-events:none;"></video>
-            <div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>
-          `;
+    // 1. Render Carousel Swipe Track Cards (CSS Scroll-Snap)
+    if (track) {
+      track.innerHTML = list.map((mem, idx) => {
+        const isVideo = mem.media_type === 'video';
+        const ytId = isVideo && mem.video_url ? getYouTubeId(mem.video_url) : null;
+        const embedUrl = isVideo ? getEmbedUrl(mem.video_url || '') : '';
+        const localVideo = isVideo && mem.file_path ? mem.file_path : null;
+
+        let mediaHtml = '';
+        if (isVideo) {
+          if (ytId) {
+            mediaHtml = `<img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" alt="${escHtml(mem.title)}" loading="lazy"><div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>`;
+          } else if (localVideo) {
+            mediaHtml = `<video src="${escHtml(localVideo)}" preload="metadata" muted playsinline style="pointer-events:none;"></video><div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>`;
+          } else {
+            mediaHtml = `<div style="width:100%;height:100%;background:#0D0500;display:flex;align-items:center;justify-content:center;"><div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div></div>`;
+          }
         } else {
-          mediaPreviewHtml = `
-            <div style="width:100%;height:100%;background:#0F172A;display:flex;align-items:center;justify-content:center;">
-              <div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>
+          mediaHtml = `<img src="${escHtml(mem.file_path || '')}" alt="${escHtml(mem.title)}" loading="lazy">`;
+        }
+
+        const badgeHtml = isVideo
+          ? `<span class="gallery-card-badge video"><i class="fa-solid fa-video"></i> Video</span>`
+          : `<span class="gallery-card-badge photo"><i class="fa-solid fa-camera"></i> ${mem.utsav_year}</span>`;
+
+        return `
+          <div class="gallery-swipe-card reveal" data-idx="${idx}" data-type="${isVideo ? 'video' : 'photo'}" data-src="${escHtml(mem.file_path || '')}" data-embed="${escHtml(embedUrl)}" data-local="${escHtml(localVideo || '')}" data-title="${escHtml(mem.title)}" tabindex="0" role="button" aria-label="View ${isVideo ? 'video' : 'photo'}: ${escHtml(mem.title)}">
+            ${badgeHtml}
+            ${mediaHtml}
+            <div class="gallery-card-overlay">
+              <h4 class="gallery-card-title">${escHtml(mem.title)}</h4>
+              <span class="gallery-card-meta"><i class="fa-solid fa-calendar-days"></i> Ganesh Utsav ${mem.utsav_year}</span>
             </div>
-          `;
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 2. Render Grid View Tiles
+    if (grid) {
+      grid.innerHTML = list.map(mem => {
+        const isVideo = mem.media_type === 'video';
+        const ytId = isVideo && mem.video_url ? getYouTubeId(mem.video_url) : null;
+        const embedUrl = isVideo ? getEmbedUrl(mem.video_url || '') : '';
+        const localVideo = isVideo && mem.file_path ? mem.file_path : null;
+
+        let mediaHtml = '';
+        if (isVideo) {
+          if (ytId) {
+            mediaHtml = `<img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" alt="${escHtml(mem.title)}" loading="lazy"><div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>`;
+          } else if (localVideo) {
+            mediaHtml = `<video src="${escHtml(localVideo)}" preload="metadata" muted playsinline style="pointer-events:none;"></video><div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div>`;
+          } else {
+            mediaHtml = `<div style="width:100%;height:100%;background:#0D0500;display:flex;align-items:center;justify-content:center;"><div class="gallery-play-btn-circle"><i class="fa-solid fa-play"></i></div></div>`;
+          }
+        } else {
+          mediaHtml = `<img src="${escHtml(mem.file_path || '')}" alt="${escHtml(mem.title)}" loading="lazy">`;
         }
 
         return `
-          <div class="gallery-tile-item reveal" data-type="video" data-embed="${escHtml(embedUrl)}" data-local="${escHtml(localVideo || '')}" data-title="${escHtml(mem.title)}" tabindex="0" role="button" aria-label="Play video ${escHtml(mem.title)}">
+          <div class="gallery-tile-item reveal" data-type="${isVideo ? 'video' : 'photo'}" data-src="${escHtml(mem.file_path || '')}" data-embed="${escHtml(embedUrl)}" data-local="${escHtml(localVideo || '')}" data-title="${escHtml(mem.title)}" tabindex="0" role="button" aria-label="View ${escHtml(mem.title)}">
             <div style="width:100%;height:100%;background:#0D0500;display:flex;align-items:center;justify-content:center;position:relative;">
-              ${mediaPreviewHtml}
+              ${mediaHtml}
             </div>
             <div class="gallery-tile-overlay">
               <h4 class="gallery-tile-title">${escHtml(mem.title)}</h4>
-              <span class="gallery-tile-meta"><i class="fa-solid fa-video"></i> Video • ${mem.utsav_year}</span>
+              <span class="gallery-tile-meta">${isVideo ? '<i class="fa-solid fa-video"></i> Video • ' : '<i class="fa-solid fa-camera"></i> '}${mem.utsav_year}</span>
             </div>
           </div>
         `;
-      } else {
-        return `
-          <div class="gallery-tile-item reveal" data-type="photo" data-src="${escHtml(mem.file_path || '')}" data-title="${escHtml(mem.title)}" tabindex="0" role="button" aria-label="View photo ${escHtml(mem.title)}">
-            <img src="${escHtml(mem.file_path || '')}" alt="${escHtml(mem.title)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">
-            <div class="gallery-tile-overlay">
-              <h4 class="gallery-tile-title">${escHtml(mem.title)}</h4>
-              <span class="gallery-tile-meta"><i class="fa-solid fa-camera"></i> ${mem.utsav_year}</span>
-            </div>
-          </div>
-        `;
-      }
-    }).join('');
+      }).join('');
+    }
 
-    grid.querySelectorAll('.gallery-tile-item').forEach(item => {
+    // 3. Attach Lightbox Click Handlers to both Carousel cards and Grid items
+    document.querySelectorAll('.gallery-swipe-card, .gallery-tile-item').forEach(item => {
       item.addEventListener('click', () => openLightbox(item));
       item.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -597,7 +817,93 @@
       });
     });
 
+    // 4. Initialize Carousel Engine (Scroll-snap, Controls, Pagination Dots)
+    initGalleryCarousel(list.length);
     observeReveals();
+  }
+
+  function initGalleryCarousel(totalItems) {
+    const track = document.getElementById('gallerySwipeTrack');
+    const prevBtn = document.getElementById('btnCarouselPrev');
+    const nextBtn = document.getElementById('btnCarouselNext');
+    const counterBadge = document.getElementById('carouselCounterBadge');
+    const dotsContainer = document.getElementById('carouselDotsIndicator');
+
+    if (!track || totalItems <= 0) return;
+
+    if (counterBadge) {
+      counterBadge.textContent = `${totalItems} ${totalItems === 1 ? 'Memory' : 'Memories'}`;
+    }
+
+    // Build pagination dots (cap at max 8 for clean UI)
+    const dotCount = Math.min(totalItems, 8);
+    if (dotsContainer) {
+      dotsContainer.innerHTML = Array.from({ length: dotCount }, (_, i) => `
+        <button type="button" class="carousel-dot ${i === 0 ? 'active' : ''}" data-index="${i}" aria-label="Go to slide ${i + 1}"></button>
+      `).join('');
+
+      dotsContainer.querySelectorAll('.carousel-dot').forEach(dot => {
+        dot.addEventListener('click', () => {
+          const idx = parseInt(dot.dataset.index, 10);
+          const scrollWidth = track.scrollWidth - track.clientWidth;
+          const target = (idx / (dotCount - 1 || 1)) * scrollWidth;
+          track.scrollTo({ left: target, behavior: 'smooth' });
+        });
+      });
+    }
+
+    function updateCarouselStatus() {
+      const scrollLeft = track.scrollLeft;
+      const maxScroll = track.scrollWidth - track.clientWidth;
+
+      if (prevBtn) prevBtn.disabled = scrollLeft <= 10;
+      if (nextBtn) nextBtn.disabled = scrollLeft >= (maxScroll - 10);
+
+      // Active dot update
+      if (dotsContainer && dotCount > 1 && maxScroll > 0) {
+        const progress = Math.min(1, Math.max(0, scrollLeft / maxScroll));
+        const activeIdx = Math.round(progress * (dotCount - 1));
+        dotsContainer.querySelectorAll('.carousel-dot').forEach((d, i) => {
+          d.classList.toggle('active', i === activeIdx);
+        });
+      }
+    }
+
+    updateCarouselStatus();
+
+    // Navigation buttons
+    if (prevBtn) {
+      prevBtn.onclick = () => {
+        const card = track.querySelector('.gallery-swipe-card');
+        const cardWidth = card ? card.offsetWidth + 20 : 320;
+        track.scrollBy({ left: -cardWidth, behavior: 'smooth' });
+      };
+    }
+
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        const card = track.querySelector('.gallery-swipe-card');
+        const cardWidth = card ? card.offsetWidth + 20 : 320;
+        track.scrollBy({ left: cardWidth, behavior: 'smooth' });
+      };
+    }
+
+    track.addEventListener('scroll', () => {
+      requestAnimationFrame(updateCarouselStatus);
+    }, { passive: true });
+
+    // Keyboard Arrow Navigation
+    track.addEventListener('keydown', (e) => {
+      const card = track.querySelector('.gallery-swipe-card');
+      const cardWidth = card ? card.offsetWidth + 20 : 320;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        track.scrollBy({ left: -cardWidth, behavior: 'smooth' });
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        track.scrollBy({ left: cardWidth, behavior: 'smooth' });
+      }
+    });
   }
 
   function getYouTubeId(url) {

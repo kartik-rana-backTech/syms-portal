@@ -26,6 +26,31 @@ require_once __DIR__ . '/includes/logger.php';
   
   <title>Sudarshan Yuvak Mandal | Official Ganesh Utsav Portal, Surat</title>
 
+  <!-- Passive Event Listeners Booster for Smooth Scrolling & Chrome Violation Prevention -->
+  <script>
+    (function () {
+      'use strict';
+      if (typeof EventTarget === 'undefined') return;
+      var passiveEvents = ['touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel', 'mousewheel'];
+      var origAdd = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (type, listener, options) {
+        var modOptions = options;
+        if (passiveEvents.indexOf(type) !== -1) {
+          if (typeof options === 'boolean') {
+            modOptions = { capture: options, passive: true };
+          } else if (typeof options === 'object' && options !== null) {
+            if (options.passive === undefined) {
+              modOptions = Object.assign({}, options, { passive: true });
+            }
+          } else if (options === undefined || options === null) {
+            modOptions = { passive: true };
+          }
+        }
+        return origAdd.call(this, type, listener, modOptions);
+      };
+    })();
+  </script>
+
   <!-- Google Fonts Preconnect & Stylesheets -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -369,14 +394,53 @@ require_once __DIR__ . '/includes/logger.php';
       <p class="section-subtitle">Photos and video moments from past and present Ganesh Utsav celebrations.</p>
     </div>
 
-    <!-- Year Filter Bar -->
-    <div class="gallery-filter-bar reveal" id="yearFilterContainer" role="group" aria-label="Filter memories by year">
-      <!-- Injected by landing.js -->
+    <!-- Year Filter Bar & Layout Switcher -->
+    <div class="gallery-controls-bar reveal">
+      <div class="gallery-filter-bar" id="yearFilterContainer" role="group" aria-label="Filter memories by year">
+        <!-- Injected by landing.js -->
+      </div>
+      
+      <div class="gallery-view-toggle" id="galleryViewToggle">
+        <button type="button" class="btn-gallery-view active" id="btnViewCarousel" data-view="carousel" aria-label="Swipe Cards Carousel" title="Swipe Cards View">
+          <i class="fa-solid fa-film"></i> <span class="view-label">Swipe Cards</span>
+        </button>
+        <button type="button" class="btn-gallery-view" id="btnViewGrid" data-view="grid" aria-label="Grid View" title="All Photos Grid">
+          <i class="fa-solid fa-table-cells"></i> <span class="view-label">Grid</span>
+        </button>
+      </div>
     </div>
 
-    <!-- Gallery Cards Grid -->
-    <div class="gallery-cards-grid" id="galleryGrid" role="list" aria-label="Memory Photos and Videos">
-      <!-- Injected by landing.js -->
+    <!-- Gallery Container (Holds Swipe Carousel & Grid) -->
+    <div class="gallery-main-wrapper reveal" id="galleryMainWrapper">
+      
+      <!-- Carousel Slider Viewport -->
+      <div class="gallery-carousel-container" id="galleryCarouselContainer">
+        <!-- Navigation Buttons -->
+        <button type="button" class="carousel-nav-btn prev" id="btnCarouselPrev" aria-label="Previous memory card" disabled>
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        
+        <div class="gallery-swipe-track" id="gallerySwipeTrack" tabindex="0" role="region" aria-label="Swipeable Memories Cards">
+          <!-- Injected swipe cards -->
+        </div>
+
+        <button type="button" class="carousel-nav-btn next" id="btnCarouselNext" aria-label="Next memory card">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
+      </div>
+
+      <!-- Carousel Pagination & Status Bar -->
+      <div class="gallery-carousel-meta" id="galleryCarouselMeta">
+        <span class="carousel-swipe-hint"><i class="fa-solid fa-hand-pointer"></i> Swipe or use arrows</span>
+        <div class="carousel-dots-indicator" id="carouselDotsIndicator" role="tablist" aria-label="Memory Pagination"></div>
+        <span class="carousel-counter-badge" id="carouselCounterBadge">0 / 0</span>
+      </div>
+
+      <!-- Expanded Grid View (Hidden by default, toggled via Grid button) -->
+      <div class="gallery-cards-grid" id="galleryGrid" role="list" aria-label="Memory Photos and Videos" style="display: none;">
+        <!-- Injected by landing.js -->
+      </div>
+
     </div>
 
   </div>
@@ -466,6 +530,31 @@ require_once __DIR__ . '/includes/logger.php';
   <img class="lightbox-img-el" id="lightboxImg" src="" alt="Fullscreen view">
   <div id="lightboxVideo" style="display:none;"></div>
   <div class="lightbox-caption-text" id="lightboxCaption"></div>
+</div>
+
+<!-- ================================================================
+     ROUTE MAP INTERACTIVE MODAL
+     ================================================================ -->
+<div class="lightbox-modal" id="routeMapModal" role="dialog" aria-modal="true" aria-label="Route Map Viewer">
+  <div class="route-modal-card">
+    <div class="route-modal-header">
+      <div class="route-modal-title-wrap">
+        <span class="route-pill-badge" id="routeModalBadge">🚶 Aagman</span>
+        <h3 id="routeModalTitle">Procession Route Map</h3>
+      </div>
+      <button class="lightbox-close-btn route-modal-close" id="routeMapModalClose" aria-label="Close route map modal">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="route-modal-body" id="routeModalBody">
+      <!-- Injected iframe -->
+    </div>
+    <div class="route-modal-footer">
+      <a href="#" id="routeModalGmapsLink" target="_blank" rel="noopener" class="btn-open-gmaps">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Turn-by-Turn in Google Maps App
+      </a>
+    </div>
+  </div>
 </div>
 
 <!-- ================================================================

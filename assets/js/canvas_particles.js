@@ -70,7 +70,7 @@
 
     function init() {
         resize();
-        window.addEventListener('resize', resize);
+        window.addEventListener('resize', resize, { passive: true });
         particles = [];
         for (let i = 0; i < particleCount; i++) {
             particles.push(new Particle());
@@ -88,7 +88,7 @@
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', init, { passive: true });
     } else {
         init();
     }

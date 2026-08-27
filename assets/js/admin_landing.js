@@ -67,7 +67,7 @@
         const submitBtn = form.querySelector('.btn-submit');
         const formData = new FormData(form);
         formData.append('action', 'save_settings');
-        formData.append('csrf_token', window.APP_CONFIG.csrfToken);
+        formData.set('csrf_token', this.getCSRFToken());
 
         this.setBtnLoading(submitBtn, true);
         this.apiPost(formData, (data) => {
@@ -152,7 +152,7 @@
           const submitBtn = form.querySelector('.btn-submit');
           const formData = new FormData(form);
           formData.append('action', 'save_event');
-          formData.append('csrf_token', window.APP_CONFIG.csrfToken);
+          formData.set('csrf_token', this.getCSRFToken());
 
           this.setBtnLoading(submitBtn, true);
           this.apiPost(formData, (data) => {
@@ -277,7 +277,7 @@
               const fd = new FormData();
               fd.append('action', 'delete_event');
               fd.append('year', year);
-              fd.append('csrf_token', window.APP_CONFIG.csrfToken);
+              fd.set('csrf_token', this.getCSRFToken());
               this.apiPost(fd, (d) => {
                 this.showNotification('success', d.message || 'Event deleted.');
                 this.loadEvents();
@@ -292,7 +292,7 @@
             const fd = new FormData();
             fd.append('action', 'set_active_event');
             fd.append('year', year);
-            fd.append('csrf_token', window.APP_CONFIG.csrfToken);
+            fd.set('csrf_token', this.getCSRFToken());
             this.apiPost(fd, (d) => {
               this.showNotification('success', d.message || 'Active year updated.');
               this.loadEvents();
@@ -355,7 +355,7 @@
           const submitBtn = form.querySelector('.btn-submit');
           const formData = new FormData(form);
           formData.append('action', 'save_karyakarta');
-          formData.append('csrf_token', window.APP_CONFIG.csrfToken);
+          formData.set('csrf_token', this.getCSRFToken());
 
           this.setBtnLoading(submitBtn, true);
           this.apiPost(formData, (data) => {
@@ -487,7 +487,7 @@
               const fd = new FormData();
               fd.append('action', 'delete_karyakarta');
               fd.append('id', id);
-              fd.append('csrf_token', window.APP_CONFIG.csrfToken);
+              fd.set('csrf_token', this.getCSRFToken());
               this.apiPost(fd, (d) => {
                 this.showNotification('success', d.message || 'Karyakarta removed.');
                 this.loadKaryakartas();
@@ -552,7 +552,7 @@
           }
 
           formData.append('action', 'save_route');
-          formData.append('csrf_token', window.APP_CONFIG.csrfToken);
+          formData.set('csrf_token', this.getCSRFToken());
 
           this.setBtnLoading(submitBtn, true);
           this.apiPost(formData, (data) => {
@@ -666,7 +666,7 @@
               const fd = new FormData();
               fd.append('action', 'delete_route');
               fd.append('id', id);
-              fd.append('csrf_token', window.APP_CONFIG.csrfToken);
+              fd.set('csrf_token', this.getCSRFToken());
               this.apiPost(fd, (d) => {
                 this.showNotification('success', d.message || 'Route deleted.');
                 this.loadRoutes();
@@ -733,7 +733,7 @@
           const submitBtn = form.querySelector('.btn-submit');
           const formData = new FormData(form);
           formData.append('action', 'save_memory');
-          formData.append('csrf_token', window.APP_CONFIG.csrfToken);
+          formData.set('csrf_token', this.getCSRFToken());
 
           this.setBtnLoading(submitBtn, true);
           this.apiPost(formData, (data) => {
@@ -874,7 +874,7 @@
               const fd = new FormData();
               fd.append('action', 'delete_memory');
               fd.append('id', id);
-              fd.append('csrf_token', window.APP_CONFIG.csrfToken);
+              fd.set('csrf_token', this.getCSRFToken());
               this.apiPost(fd, (d) => {
                 this.showNotification('success', d.message || 'Memory deleted.');
                 this.loadMemories();
@@ -886,20 +886,37 @@
     },
 
     // -------------------------------------------------------------
-    // HTTP Helpers
+    // HTTP Helpers & CSRF
     // -------------------------------------------------------------
+    getCSRFToken() {
+      return (window.APP_CONFIG && window.APP_CONFIG.csrfToken) ||
+             document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+             document.querySelector('input[name="csrf_token"]')?.value ||
+             '';
+    },
+
     apiGet(action, params, onSuccess, onError) {
+      const csrf = this.getCSRFToken();
       const q = new URLSearchParams(Object.assign({ action: action }, params));
       fetch(`api/admin_landing_handler.php?${q.toString()}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrf
+        }
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === 'success') {
+      .then(async (res) => {
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = { status: 'error', message: `Server returned error (${res.status})` };
+        }
+        if (res.ok && data.status === 'success') {
           if (onSuccess) onSuccess(data);
         } else {
-          if (onError) onError(data.message || 'Error occurred');
-          else this.showNotification('error', data.message || 'Request failed');
+          const errMsg = data.message || `Request failed with status ${res.status}`;
+          if (onError) onError(errMsg);
+          else this.showNotification('error', errMsg);
         }
       })
       .catch(err => {
@@ -909,18 +926,33 @@
     },
 
     apiPost(formData, onSuccess, onError) {
+      const csrf = this.getCSRFToken();
+      if (formData instanceof FormData) {
+        if (!formData.has('csrf_token') || !formData.get('csrf_token')) {
+          formData.set('csrf_token', csrf);
+        }
+      }
       fetch('api/admin_landing_handler.php', {
         method: 'POST',
         body: formData,
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': csrf
+        }
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === 'success') {
+      .then(async (res) => {
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = { status: 'error', message: `Server error (${res.status})` };
+        }
+        if (res.ok && data.status === 'success') {
           if (onSuccess) onSuccess(data);
         } else {
-          if (onError) onError(data.message || 'Operation failed');
-          else this.showNotification('error', data.message || 'Operation failed');
+          const errMsg = data.message || `Operation failed with status ${res.status}`;
+          if (onError) onError(errMsg);
+          else this.showNotification('error', errMsg);
         }
       })
       .catch(err => {
