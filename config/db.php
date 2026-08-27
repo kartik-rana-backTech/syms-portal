@@ -56,7 +56,7 @@ define('MANDAL_MAX_MEMBERS', (int)Env::get('MANDAL_MAX_MEMBERS', 50));
 class Database {
     private static ?PDO $pdo = null;
 
-    public static function getConnection(): PDO {
+    public static function getConnection(bool $throwException = false): PDO {
         if (self::$pdo === null) {
             $host   = (string)Env::get('DB_HOST', 'localhost');
             $port   = (int)Env::get('DB_PORT', 3306);
@@ -76,7 +76,10 @@ class Database {
             try {
                 self::$pdo = new PDO($dsn, $user, $pass, $options);
             } catch (PDOException $e) {
-                Logger::error("Database Connection Failure: " . $e->getMessage());
+                error_log("Database Connection Failure: " . $e->getMessage());
+                if ($throwException) {
+                    throw $e;
+                }
                 http_response_code(500);
                 header('Content-Type: application/json; charset=utf-8');
                 die(json_encode([

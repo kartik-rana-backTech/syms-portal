@@ -12,6 +12,7 @@ class Logger {
 
     private static string $logFile = __DIR__ . '/../logs/app_errors.log';
     private static int $lastPurgeTime = 0;
+    private static bool $isLogging = false;
 
     /**
      * Log Error Message
@@ -38,15 +39,22 @@ class Logger {
      * Centralized Logger Function
      */
     public static function log(string $level, string $message, array $context = []): void {
+        if (self::$isLogging) {
+            return;
+        }
+        self::$isLogging = true;
+
         try {
             $contextJson = !empty($context) ? json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
             
-            // 1. Write to MySQL system_logs Table
+            // 1. Write to MySQL system_logs Table (if DB is already active)
             try {
-                $pdo = Database::getConnection();
-                $stmt = $pdo->prepare("INSERT INTO system_logs (level, message, context_json, created_at) VALUES (?, ?, ?, NOW())");
-                $stmt->execute([$level, $message, $contextJson]);
-            } catch (Exception $e) {
+                if (class_exists('Database')) {
+                    $pdo = Database::getConnection(true);
+                    $stmt = $pdo->prepare("INSERT INTO system_logs (level, message, context_json, created_at) VALUES (?, ?, ?, NOW())");
+                    $stmt->execute([$level, $message, $contextJson]);
+                }
+            } catch (Throwable $e) {
                 // Ignore DB error during logging to prevent infinite loops
             }
 
@@ -73,6 +81,8 @@ class Logger {
 
         } catch (Throwable $t) {
             error_log("Logger Throwable: " . $t->getMessage());
+        } finally {
+            self::$isLogging = false;
         }
     }
 
